@@ -6,6 +6,7 @@
   <title>Unity WebGL Player | SexWithHitler</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#000">
+  <link rel="icon" href="data:,">
 
   <style>
     html {
@@ -162,7 +163,7 @@
       document.getElementsByTagName("head")[0].appendChild(meta);
     }
 
-    function mergeFiles(fileParts, onProgress) {
+    function mergeFiles(fileParts, onProgress, mimeType = "application/octet-stream") {
       return new Promise((resolve, reject) => {
         let buffers = [];
 
@@ -175,7 +176,7 @@
               combined.set(new Uint8Array(buf), offset);
               offset += buf.byteLength;
             }
-            const mergedBlob = new Blob([combined], { type: "application/octet-stream" });
+            const mergedBlob = new Blob([combined], { type: mimeType });
             resolve(mergedBlob);
             return;
           }
@@ -229,7 +230,7 @@
 
     const wasmPromise = mergeFiles(getParts("Build/build8.wasm", wasmParts), (done, total) => {
       setStatus("status-build8-wasm", `merging... part${done - 1}/part${total - 1}`);
-    }).then((blob) => {
+    }, "application/wasm").then((blob) => {
       setStatus("status-build8-wasm", "done ✓", true);
       return blob;
     });
