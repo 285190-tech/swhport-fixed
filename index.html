@@ -113,6 +113,159 @@
       margin: 0 4px 0 0;
     }
 
+    /* Admin / cheats panel (HTML overlay, independent of the Unity canvas) */
+    #adminTab {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 7;
+      display: none;
+      font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .12em;
+      color: #ffd9df;
+      background: rgba(20, 6, 10, .72);
+      border: 1px solid rgba(255, 70, 100, .6);
+      border-radius: 4px;
+      padding: 8px 10px;
+      cursor: pointer;
+      opacity: .55;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #adminTab:hover {
+      opacity: 1;
+      background: rgba(255, 70, 100, .18);
+    }
+
+    #adminPanel {
+      position: fixed;
+      left: 12px;
+      bottom: 52px;
+      z-index: 8;
+      width: 430px;
+      max-width: calc(100vw - 24px);
+      max-height: min(78vh, 660px);
+      overflow: auto;
+      display: none;
+      box-sizing: border-box;
+      padding: 12px;
+      color: #e8e8e8;
+      background: rgba(12, 10, 13, .94);
+      border: 1px solid rgba(255, 70, 100, .55);
+      border-radius: 8px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, .7);
+      backdrop-filter: blur(10px);
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #adminPanel.open { display: block; }
+
+    .admHead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .16);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      color: #ff8da1;
+    }
+
+    .admHead button {
+      padding: 2px 8px;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .admHint, .admNote {
+      color: #8d8d99;
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+
+    .admStatus {
+      margin: 8px 0;
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, .055);
+      color: #8ef0b6;
+      min-height: 16px;
+      overflow-wrap: anywhere;
+    }
+
+    #adminPanel section { margin-top: 12px; }
+    #adminPanel h3 {
+      margin: 0 0 6px;
+      color: #ffb3c0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    #adminPanel button {
+      background: rgba(255, 255, 255, .07);
+      color: #eee;
+      border: 1px solid rgba(255, 255, 255, .24);
+      border-radius: 4px;
+      padding: 6px 9px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #adminPanel button:hover {
+      background: rgba(255, 70, 100, .2);
+      border-color: rgba(255, 70, 100, .7);
+      color: #fff;
+    }
+
+    #adminPanel button.danger { color: #ff9d9d; }
+    #adminPanel button.danger:hover { background: rgba(255, 60, 60, .22); border-color: rgba(255, 90, 90, .8); }
+
+    .admRow { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .admLevels {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      gap: 4px;
+    }
+
+    .admLevels button {
+      padding: 5px 0;
+      font-size: 10.5px;
+    }
+
+    .admCheck {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .admConsole {
+      display: grid;
+      grid-template-columns: 1fr 1fr .7fr auto;
+      gap: 4px;
+    }
+
+    .admConsole input {
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 5px 6px;
+      color: #eee;
+      background: rgba(255, 255, 255, .055);
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 4px;
+      font: inherit;
+    }
+
     .visible {
       visibility: visible;
       opacity: 1;
@@ -239,6 +392,63 @@
 
   <div id="menuBtn" title="Return to the main menu"></div>
 
+  <div id="adminTab" title="Open admin cheats (Ctrl+Shift+A)">ADMIN</div>
+
+  <div id="adminPanel" aria-hidden="true">
+    <div class="admHead">
+      <span>ADMIN / CHEATS</span>
+      <button type="button" id="admClose" title="Close">×</button>
+    </div>
+    <div class="admHint">Ctrl+Shift+A toggles this panel. Changes only affect this browser's local save.</div>
+    <div class="admStatus" id="admStatus">Ready.</div>
+
+    <section>
+      <h3>Unlocks</h3>
+      <div class="admRow">
+        <button type="button" id="admUnlock">Unlock all content</button>
+      </div>
+      <div class="admNote">Marks all 30 levels complete, opens every gallery card, and enables 18+ content by patching save.dat, then reloads.</div>
+    </section>
+
+    <section>
+      <h3>Level warp</h3>
+      <div id="admLevels" class="admLevels"></div>
+    </section>
+
+    <section>
+      <h3>Dialogue</h3>
+      <label class="admCheck"><input type="checkbox" id="admAutoDialogue"> Auto-advance dialogue</label>
+      <div class="admRow">
+        <button type="button" id="admAdvance">Advance line</button>
+        <button type="button" id="admSkipMission">Skip current mission</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>System</h3>
+      <div class="admRow">
+        <button type="button" id="admMenu">Title screen</button>
+        <button type="button" id="admSave">Save now</button>
+        <button type="button" id="admFullscreen">Fullscreen</button>
+      </div>
+      <div class="admRow" style="margin-top:6px">
+        <button type="button" id="admReload">Reload page</button>
+        <button type="button" id="admReset" class="danger">Reset save</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>SendMessage console</h3>
+      <div class="admConsole">
+        <input id="admObj" placeholder="GameObject" value="DialogueText">
+        <input id="admMethod" placeholder="Method" value="OnNextClicked">
+        <input id="admArg" placeholder="arg (optional)">
+        <button type="button" id="admSend">Send</button>
+      </div>
+      <div class="admNote">Calls no-arg / int / string methods on any Unity object. Bool-argument methods are not supported by Unity's SendMessage bridge.</div>
+    </section>
+  </div>
+
   <script>
     if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
       var meta = document.createElement("meta");
@@ -341,9 +551,10 @@
       unityInstance = instance;
       fitCanvas();
 
-      const send = (obj, method) => {
+      const send = (obj, method, arg) => {
         try {
-          instance.SendMessage(obj, method);
+          if (arg === undefined) instance.SendMessage(obj, method);
+          else instance.SendMessage(obj, method, arg);
         } catch (e) {
           // target not present in the current scene - ignore
         }
@@ -399,6 +610,424 @@
         e.stopPropagation();
         send("ConversationSceneManager", "LoadMainMenu");
       });
+
+      // ------------------------------------------------------------------
+      // Admin / cheats panel
+      // ------------------------------------------------------------------
+      const admEl = (id) => document.getElementById(id);
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const padLevel = (n) => String(n).padStart(2, "0");
+
+      // Serialized LevelButton.levelIndex values are not in GameObject-name
+      // order. This maps level 1-30 to the actual scene object name.
+      const LEVEL_OBJECTS = [
+        "LevelButton", "LevelButton (1)", "LevelButton (2)", "LevelButton (3)",
+        "LevelButton (4)", "LevelButton (5)", "LevelButton (6)", "LevelButton (7)",
+        "LevelButton (8)", "LevelButton (9)", "LevelButton (10)", "LevelButton (11)",
+        "LevelButton (18)", "LevelButton (19)", "LevelButton (20)", "LevelButton (12)",
+        "LevelButton (13)", "LevelButton (14)", "LevelButton (15)", "LevelButton (16)",
+        "LevelButton (17)", "LevelButton (21)", "LevelButton (22)", "LevelButton (23)",
+        "LevelButton (24)", "LevelButton (25)", "LevelButton (26)", "LevelButton (30)",
+        "LevelButton (31)", "LevelButton (32)"
+      ];
+
+      function setAdmStatus(message, bad) {
+        const el = admEl("admStatus");
+        if (!el) return;
+        el.textContent = message;
+        el.style.color = bad ? "#ff7b7b" : "#8ef0b6";
+      }
+
+      const adminPanel = admEl("adminPanel");
+      const adminTab = admEl("adminTab");
+      function toggleAdmin(force) {
+        const open = force === undefined ? !adminPanel.classList.contains("open") : !!force;
+        adminPanel.classList.toggle("open", open);
+        adminPanel.setAttribute("aria-hidden", String(!open));
+        adminTab.textContent = open ? "ADMIN ×" : "ADMIN";
+      }
+      adminTab.style.display = "block";
+      adminTab.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleAdmin();
+      });
+      admEl("admClose").addEventListener("click", () => toggleAdmin(false));
+      document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "A" || e.key === "a")) {
+          e.preventDefault();
+          toggleAdmin();
+        } else if (e.key === "Escape" && adminPanel.classList.contains("open")) {
+          toggleAdmin(false);
+        }
+      });
+
+      // Level warp through the normal menu flow. A direct scene load bypasses
+      // the game's own level setup, so open the roadmap and press the real
+      // LevelButton instead.
+      let warping = false;
+      async function warpToLevel(level) {
+        if (warping) return;
+        warping = true;
+        toggleAdmin(false);
+        setAdmStatus(`Loading level ${padLevel(level)}…`);
+        try {
+          const go = LEVEL_OBJECTS[level - 1];
+          // Retry the whole chain: re-opening the title screen also closes a
+          // leftover Settings screen or a partially opened roadmap.
+          for (let attempt = 0; attempt < 3; attempt++) {
+            send("ConversationSceneManager", "LoadMainMenu");
+            await sleep(2600);
+            send("Btn_Play", "Press");
+            await sleep(1700);
+            send(go, "LevelButtonClicked");
+            await sleep(900);
+            send(go, "LevelButtonClicked");
+            await sleep(2600);
+          }
+          setAdmStatus(`Level ${padLevel(level)} requested.`);
+        } catch (e) {
+          setAdmStatus("Warp failed: " + (e && e.message ? e.message : e), true);
+        } finally {
+          setTimeout(() => { warping = false; }, 1200);
+        }
+      }
+
+      const levelGrid = admEl("admLevels");
+      for (let i = 1; i <= 30; i++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = padLevel(i);
+        b.title = `Warp to level ${padLevel(i)}`;
+        b.dataset.level = String(i);
+        b.addEventListener("click", () => warpToLevel(i));
+        levelGrid.appendChild(b);
+      }
+
+      // Auto-advance only affects visual-novel dialogue scenes. Sending to a
+      // missing target in a mission/menu scene is harmless.
+      let autoAdvanceTimer = null;
+      function setAutoAdvance(on) {
+        if (autoAdvanceTimer) {
+          clearInterval(autoAdvanceTimer);
+          autoAdvanceTimer = null;
+        }
+        if (on) {
+          autoAdvanceTimer = setInterval(() => send("DialogueText", "OnNextClicked"), 800);
+          setAdmStatus("Auto-advance on.");
+        } else {
+          setAdmStatus("Auto-advance off.");
+        }
+      }
+      admEl("admAutoDialogue").addEventListener("change", (e) => setAutoAdvance(e.target.checked));
+      admEl("admAdvance").addEventListener("click", () => {
+        send("DialogueText", "OnNextClicked");
+        setAdmStatus("Advanced dialogue.");
+      });
+      admEl("admSkipMission").addEventListener("click", () => {
+        skipMission();
+        setAdmStatus("Mission skip sent.");
+      });
+
+      // ------------------------------------------------------------------
+      // Local save patcher (unlock levels and gallery cards)
+      // ------------------------------------------------------------------
+      const textEncoder = new TextEncoder();
+
+      function indexOfBytes(haystack, needle) {
+        outer:
+        for (let i = 0; i <= haystack.length - needle.length; i++) {
+          for (let j = 0; j < needle.length; j++) {
+            if (haystack[i + j] !== needle[j]) continue outer;
+          }
+          return i;
+        }
+        return -1;
+      }
+
+      function idbRequest(req) {
+        return new Promise((resolve, reject) => {
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      function openIdb() {
+        return new Promise((resolve, reject) => {
+          const req = indexedDB.open("/idbfs");
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async function readSaveEntry() {
+        const db = await openIdb();
+        try {
+          if (!db.objectStoreNames.contains("FILE_DATA")) {
+            db.close();
+            return null;
+          }
+          const tx = db.transaction("FILE_DATA", "readonly");
+          const store = tx.objectStore("FILE_DATA");
+          const keys = await idbRequest(store.getAllKeys());
+          const key = keys.find((k) => typeof k === "string" && k.endsWith("/save.dat"));
+          if (!key) {
+            db.close();
+            return null;
+          }
+          const value = await idbRequest(store.get(key));
+          return {
+            db,
+            key,
+            mode: value.mode,
+            bytes: new Uint8Array(value.contents)
+          };
+        } catch (e) {
+          db.close();
+          throw e;
+        }
+      }
+
+      async function writeSaveEntry(entry) {
+        try {
+          const tx = entry.db.transaction("FILE_DATA", "readwrite");
+          const store = tx.objectStore("FILE_DATA");
+          store.put({
+            timestamp: new Date(),
+            mode: entry.mode,
+            contents: entry.bytes
+          }, entry.key);
+          await new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+        } finally {
+          entry.db.close();
+        }
+      }
+
+      function skipSaveValue(bytes, pos) {
+        const type = bytes[pos];
+        if (type === 0x06) {
+          // BinaryObjectString: record, object id, 7-bit length, UTF-8 bytes
+          let length = 0;
+          let shift = 0;
+          let i = pos + 5;
+          while (i < bytes.length) {
+            const b = bytes[i++];
+            length |= (b & 0x7f) << shift;
+            if (!(b & 0x80)) break;
+            shift += 7;
+          }
+          return i + length;
+        }
+        if (type === 0x09) return pos + 5; // MemberReference
+        if (type === 0x0a) return pos + 1; // ObjectNull
+        if (type === 0x08) return pos + 2; // one primitive byte
+        return -1;
+      }
+
+      function patchLevelCompletion(bytes) {
+        const signature = new Uint8Array([
+          0x09,
+          ...textEncoder.encode("LevelData"),
+          0x04, 0x00, 0x00, 0x00,
+          0x04,
+          ...textEncoder.encode("name")
+        ]);
+        const found = indexOfBytes(bytes, signature);
+        if (found < 0) return 0;
+
+        // ClassWithMembersAndTypes: 0x05, 4-byte object id, 1-byte name length,
+        // "LevelData", member count, member names, member types, library id,
+        // then values. The first level object has object id 0x1e here.
+        const cls = found - 5;
+        const metadataId =
+          bytes[cls + 1] |
+          (bytes[cls + 2] << 8) |
+          (bytes[cls + 3] << 16) |
+          (bytes[cls + 4] << 24);
+
+        let valuesStart = -1;
+        const memberTypeInfo = [1, 1, 0, 1, 1, 2, 0, 0, 0];
+        for (let i = cls; i < Math.min(bytes.length - 9, cls + 300); i++) {
+          let match = true;
+          for (let j = 0; j < memberTypeInfo.length; j++) {
+            if (bytes[i + j] !== memberTypeInfo[j]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            valuesStart = i + memberTypeInfo.length;
+            break;
+          }
+        }
+        if (valuesStart < 0) return 0;
+
+        let pos = valuesStart;
+        let count = 0;
+        for (let n = 0; n < 30; n++) {
+          if (n > 0) {
+            if (bytes[pos] !== 0x01) break;
+            const md =
+              bytes[pos + 5] |
+              (bytes[pos + 6] << 8) |
+              (bytes[pos + 7] << 16) |
+              (bytes[pos + 8] << 24);
+            if (md !== metadataId) break;
+            pos += 9;
+          }
+          pos = skipSaveValue(bytes, pos); // name
+          if (pos < 0) break;
+          pos = skipSaveValue(bytes, pos); // description
+          if (pos < 0) break;
+          bytes[pos] = 1; // isCompleted
+          count++;
+          pos += 1;
+          pos = skipSaveValue(bytes, pos); // pathToLevelPrefab
+          if (pos < 0) break;
+        }
+        return count;
+      }
+
+      async function patchSaveUnlock() {
+        const entry = await readSaveEntry();
+        if (!entry) {
+          return { ok: false, message: "No local save file was found yet." };
+        }
+        try {
+          const bytes = entry.bytes;
+          let adult = 0;
+          let cards = 0;
+
+          // Root GameData values: four object references followed by
+          // hContentEnabled, nakedActors, selectedLanguage.
+          const rootRefs = [
+            0x09, 0x03, 0x00, 0x00, 0x00,
+            0x09, 0x04, 0x00, 0x00, 0x00,
+            0x09, 0x05, 0x00, 0x00, 0x00,
+            0x09, 0x06, 0x00, 0x00, 0x00
+          ];
+          const root = indexOfBytes(bytes, rootRefs);
+          if (root >= 0 && root + 21 < bytes.length) {
+            bytes[root + 20] = 1;
+            bytes[root + 21] = 1;
+            adult = 1;
+          }
+
+          // PhotocardData.isOpened: one class record followed by nine
+          // ClassWithId records, ten bytes per record from the first bool.
+          const cardName = textEncoder.encode("isOpened");
+          const cardMarker = indexOfBytes(bytes, cardName);
+          if (cardMarker >= 0) {
+            const first = cardMarker + cardName.length + 1 + 1 + 4;
+            for (let n = 0; n < 10; n++) {
+              const off = first + n * 10;
+              if (off < bytes.length) {
+                bytes[off] = 1;
+                cards++;
+              }
+            }
+          }
+
+          const levels = patchLevelCompletion(bytes);
+          if (!levels && !cards && !adult) {
+            return { ok: false, message: "Save structure was not recognized." };
+          }
+
+          await writeSaveEntry(entry);
+          return { ok: true, levels, cards, adult };
+        } catch (e) {
+          entry.db.close();
+          throw e;
+        }
+      }
+
+      admEl("admUnlock").addEventListener("click", async () => {
+        setAdmStatus("Patching local save…");
+        try {
+          let result = await patchSaveUnlock();
+          if (!result.ok) {
+            // The save is created shortly after first boot; ask the game to
+            // write one, then retry.
+            send("GameDataManager", "Save");
+            setAdmStatus("Writing a fresh save, please wait…");
+            await sleep(900);
+            result = await patchSaveUnlock();
+          }
+          if (!result.ok) {
+            setAdmStatus(result.message, true);
+            return;
+          }
+          setAdmStatus(
+            `Unlocked ${result.levels} levels and ${result.cards} gallery cards. Reloading…`
+          );
+          setTimeout(() => location.reload(), 900);
+        } catch (e) {
+          setAdmStatus("Unlock failed: " + (e && e.message ? e.message : e), true);
+        }
+      });
+
+      admEl("admMenu").addEventListener("click", () => {
+        toggleAdmin(false);
+        send("ConversationSceneManager", "LoadMainMenu");
+        setAdmStatus("Returning to title…");
+      });
+      admEl("admSave").addEventListener("click", () => {
+        send("GameDataManager", "Save");
+        setAdmStatus("Save requested.");
+      });
+      admEl("admFullscreen").addEventListener("click", () => {
+        try {
+          const p = instance.SetFullscreen(1);
+          if (p && typeof p.catch === "function") p.catch(() => {});
+          setAdmStatus("Fullscreen requested.");
+        } catch (e) {
+          setAdmStatus("Fullscreen failed.", true);
+        }
+      });
+      admEl("admReload").addEventListener("click", () => location.reload());
+      admEl("admReset").addEventListener("click", async () => {
+        if (!confirm("Delete the local save and start over? This cannot be undone.")) return;
+        try {
+          const db = await openIdb();
+          const tx = db.transaction("FILE_DATA", "readwrite");
+          const store = tx.objectStore("FILE_DATA");
+          const keys = await idbRequest(store.getAllKeys());
+          for (const key of keys) {
+            if (typeof key === "string" && key.endsWith("/save.dat")) store.delete(key);
+          }
+          await new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+          db.close();
+          location.reload();
+        } catch (e) {
+          setAdmStatus("Reset failed: " + (e && e.message ? e.message : e), true);
+        }
+      });
+
+      admEl("admSend").addEventListener("click", () => {
+        const obj = admEl("admObj").value.trim();
+        const method = admEl("admMethod").value.trim();
+        const rawArg = admEl("admArg").value.trim();
+        if (!obj || !method) {
+          setAdmStatus("Enter an object and a method.", true);
+          return;
+        }
+        let arg;
+        if (rawArg !== "") {
+          const n = Number(rawArg);
+          arg = Number.isFinite(n) ? n : rawArg;
+        }
+        send(obj, method, arg);
+        setAdmStatus(`Sent ${obj}.${method}${arg === undefined ? "()" : "(" + arg + ")"}`);
+      });
+
       fitCanvas();
       // The canvas may still be settling right after boot; keep the hotspot
       // aligned for a moment.
