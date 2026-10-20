@@ -20,6 +20,107 @@
         get: function () { return 1; }
       });
     } catch (e) { /* ignore - worst case the browser refuses the override */ }
+
+    // ---------------------------------------------------------------------
+    // Pointer alignment
+    // ---------------------------------------------------------------------
+    // The canvas is laid out at a true 1280x720 and scaled up visually with a
+    // CSS transform to fill the window. That scale breaks the engine's input
+    // math: Emscripten feeds Unity the *unscaled* offset
+    //     x = clientX - rect.left
+    // while Unity's screen is only 1280x720. So a click near the right/bottom
+    // edge arrives up to ~25% too far out and the in-game cursor lags behind
+    // the real mouse, drifting toward the top-left.
+    //
+    // Fix: intercept mouse events on their way to the canvas and re-dispatch
+    // them with clientX/clientY mapped into the canvas' logical 1280x720 space.
+    // While the re-dispatched event is being handled, getBoundingClientRect()
+    // reports a plain 1280x720 box at the origin, so the engine's own offset
+    // math (clientX - rect.left) comes out correct.
+    (function () {
+      var nativeGBCR = Element.prototype.getBoundingClientRect;
+      // While a rewritten event is being dispatched, getBoundingClientRect for
+      // the canvas reports a plain 1280x720 box at (0,0). All other callers
+      // (layout, our own hotspot code, devtools) keep seeing the real rect.
+      var synthesizing = false;
+      var logicalRect = {
+        x: 0, y: 0, left: 0, top: 0, width: 1280, height: 720,
+        right: 1280, bottom: 720,
+        toJSON: function () {
+          return { x: 0, y: 0, left: 0, top: 0, width: 1280, height: 720, right: 1280, bottom: 720 };
+        }
+      };
+      Element.prototype.getBoundingClientRect = function () {
+        if (synthesizing && this && this.id === "canvas") return logicalRect;
+        return nativeGBCR.call(this);
+      };
+      Element.prototype.getBoundingClientRect.untransformed = nativeGBCR;
+
+      function fitScale(canvas) {
+        var scale = canvas.__unityFit;
+        if (!scale || !isFinite(scale) || scale <= 0) {
+          var r = nativeGBCR.call(canvas);
+          scale = r.width ? r.width / 1280 : 1;
+        }
+        return scale;
+      }
+
+      // Build a clone of `e` addressed to the canvas in its logical 1280x720
+      // space, and dispatch it. The clone is tagged so the capture guard knows
+      // to let it through untouched. MouseEvents are used throughout: this
+      // build's engine only listens for the legacy mouse event family.
+      function rewrite(canvas, e) {
+        var r = nativeGBCR.call(canvas);
+        var scale = fitScale(canvas);
+        var cx = (e.clientX - r.left) / scale;
+        var cy = (e.clientY - r.top) / scale;
+        var isWheel = (typeof WheelEvent !== "undefined") && (e instanceof WheelEvent);
+        var init = {
+          bubbles: true, cancelable: true, composed: true, view: window,
+          detail: e.detail, button: e.button, buttons: e.buttons,
+          ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+          clientX: cx, clientY: cy, screenX: cx, screenY: cy, pageX: cx, pageY: cy,
+        };
+        var out;
+        if (isWheel) {
+          out = new WheelEvent(e.type, Object.assign(init, {
+            deltaX: e.deltaX, deltaY: e.deltaY, deltaZ: e.deltaZ, deltaMode: e.deltaMode,
+          }));
+        } else {
+          out = new MouseEvent(e.type, init);
+        }
+
+        // offsetX/offsetY are read-only and derived from layout (the unscaled
+        // box), so redefine them on the clone for handlers that read them.
+        try {
+          Object.defineProperty(out, "offsetX", { get: function () { return cx; } });
+          Object.defineProperty(out, "offsetY", { get: function () { return cy; } });
+        } catch (err) { /* ignore */ }
+
+        out.__unityRewritten = true;
+        synthesizing = true;
+        try { canvas.dispatchEvent(out); } finally { synthesizing = false; }
+      }
+
+      function install(canvas) {
+        if (!canvas || canvas.__pointerFixed) return;
+        canvas.__pointerFixed = true;
+        // Only the legacy MouseEvent family is rewritten: that is what this
+        // build's engine actually listens for. PointerEvents are left alone -
+        // rewriting them would produce events the engine ignores while the
+        // originals had already been suppressed.
+        ["mousedown", "mouseup", "mousemove", "dblclick", "contextmenu", "wheel"].forEach(function (type) {
+          canvas.addEventListener(type, function (e) {
+            if (e.__unityRewritten) return;      // our own clone - let it through
+            if (e.target !== canvas) return;      // only events aimed at the canvas
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            rewrite(canvas, e);
+          }, true);
+        });
+      }
+      window.__installPointerFix = install;
+    })();
   </script>
 
   <style>
@@ -46,12 +147,15 @@
       border: 0 none;
     }
 
-    /* The Unity build always renders a fixed 1280x720 (16:9) picture. Keep the
-       canvas' layout size at exactly that resolution (so Unity's idea of the
-       screen size keeps matching its framebuffer) and scale the element
-       visually to fit the window. This preserves the 16:9 aspect ratio (no
-       stretching), and the Unity WebGL input code divides by the element's
-       bounding rect, so clicks stay aligned. */
+    /* The Unity build always renders a fixed 1280x720 (16:9) picture.
+       The element is laid out at exactly 1280x720 *in CSS pixels* and then
+       scaled visually with a transform to fit the window, so Unity's own idea
+       of the screen size keeps matching its 1280x720 framebuffer.
+
+       The scale would normally break pointer input (Emscripten converts clicks
+       from the canvas' on-screen box into the engine's 1280x720 space), so a
+       capture-phase handler rewrites pointer events into that space before the
+       engine sees them - see "Pointer alignment" in the head script. */
     #canvas {
       top: 50%;
       left: 50%;
@@ -388,6 +492,7 @@
   <div id="skipUI" class="hidden">
     <label title="Automatically skip every gameplay mission"><input type="checkbox" id="autoSkip">auto-skip</label>
     <button id="skipBtn" title="Skip the current gameplay mission">skip gameplay</button>
+    <button id="fullscreenBtn" title="Toggle fullscreen (F)">fullscreen</button>
   </div>
 
   <div id="menuBtn" title="Return to the main menu"></div>
@@ -515,15 +620,19 @@
       const canvas = document.querySelector("#canvas");
       const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
       canvas.style.setProperty("--fit", String(scale));
+      // The pointer-fix handler reads this to convert click positions into the
+      // engine's 1280x720 space. See "Pointer alignment" in the head script.
+      canvas.__unityFit = scale;
 
-      // Keep the menu hotspot glued to the game's top-right button.
-      const r = canvas.getBoundingClientRect();
+      // Keep the menu hotspot glued to the game's top-right button, using the
+      // real on-screen (post-transform) box.
+      const rect = canvas.getBoundingClientRect.untransformed.call(canvas);
       const btn = document.getElementById("menuBtn");
-      if (btn && r.width > 0) {
-        btn.style.left = (r.left + r.width * 0.932) + "px";
-        btn.style.top = (r.top + r.height * 0.008) + "px";
-        btn.style.width = (r.width * 0.067) + "px";
-        btn.style.height = (r.height * 0.112) + "px";
+      if (btn && rect.width > 0) {
+        btn.style.left = (rect.left + rect.width * 0.932) + "px";
+        btn.style.top = (rect.top + rect.height * 0.008) + "px";
+        btn.style.width = (rect.width * 0.067) + "px";
+        btn.style.height = (rect.height * 0.112) + "px";
       }
     }
     let fitTimer = null;
@@ -576,6 +685,43 @@
       document.getElementById("skipBtn").addEventListener("click", (e) => {
         e.preventDefault();
         skipMission();
+      });
+
+      // Fullscreen toggle. Prefer the browser's own Fullscreen API (it makes the
+      // page - and therefore the fitted canvas - fill the display); fall back to
+      // Unity's SetFullscreen if the API is unavailable. The canvas re-fits via
+      // the resize listener either way.
+      function toggleFullscreen(e) {
+        if (e) e.preventDefault();
+        try {
+          if (document.fullscreenElement || document.webkitFullscreenElement) {
+            (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            return;
+          }
+          const el = document.documentElement;
+          const req = el.requestFullscreen || el.webkitRequestFullscreen;
+          if (req) {
+            const p = req.call(el);
+            if (p && typeof p.catch === "function") {
+              p.catch(() => {
+                try { instance.SetFullscreen(1); } catch (err) { /* ignore */ }
+              });
+            }
+          } else if (instance && instance.SetFullscreen) {
+            instance.SetFullscreen(1);
+          }
+        } catch (err) {
+          try { instance.SetFullscreen(1); } catch (err2) { /* ignore */ }
+        }
+      }
+      document.getElementById("fullscreenBtn").addEventListener("click", toggleFullscreen);
+      // "F" toggles too, as long as the focus is not in a text field.
+      window.addEventListener("keydown", (e) => {
+        if (e.key !== "f" && e.key !== "F") return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const t = e.target;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        toggleFullscreen(e);
       });
 
       let autoTimer = null;
@@ -980,13 +1126,8 @@
         setAdmStatus("Save requested.");
       });
       admEl("admFullscreen").addEventListener("click", () => {
-        try {
-          const p = instance.SetFullscreen(1);
-          if (p && typeof p.catch === "function") p.catch(() => {});
-          setAdmStatus("Fullscreen requested.");
-        } catch (e) {
-          setAdmStatus("Fullscreen failed.", true);
-        }
+        toggleFullscreen();
+        setAdmStatus("Fullscreen toggled.");
       });
       admEl("admReload").addEventListener("click", () => location.reload());
       admEl("admReset").addEventListener("click", async () => {
@@ -1090,6 +1231,11 @@
             document.getElementById("overlayDiv").className = "hidden";
             document.getElementById("presplash").className = "hidden";
             document.getElementById("canvas").style.display = "block";
+            // Rewrite pointer events into the engine's 1280x720 space so the
+            // in-game cursor tracks the real mouse after the CSS upscale.
+            if (window.__installPointerFix && !window.__disablePointerFix) {
+              window.__installPointerFix(document.querySelector("#canvas"));
+            }
 
             createUnityInstance(document.querySelector("#canvas"), {
               dataUrl: "Build/build8.data",
