@@ -8,9 +8,23 @@
   <meta name="theme-color" content="#000">
   <link rel="icon" href="data:,">
 
+  <script>
+    // Unity computes its logical screen size as canvas.clientSize * devicePixelRatio.
+    // The canvas backing store is pinned to 1280x720 below, so on a Retina screen
+    // (dpr = 2) the game would lay its UI out for 2560x1440 and the main menu would
+    // be drawn twice too large / cropped. Pin the reported DPR to 1 so every scene
+    // always uses the native 1280x720 layout, no browser zoom needed.
+    try {
+      Object.defineProperty(window, "devicePixelRatio", {
+        configurable: true,
+        get: function () { return 1; }
+      });
+    } catch (e) { /* ignore - worst case the browser refuses the override */ }
+  </script>
+
   <style>
     html {
-      background: #444;
+      background: #000;
       font-family: sans-serif;
     }
 
@@ -20,6 +34,7 @@
       height: 100%;
       overscroll-behavior: none;
       overflow: hidden;
+      background: #000;
     }
 
     #canvas, #overlayDiv {
@@ -31,9 +46,71 @@
       border: 0 none;
     }
 
+    /* The Unity build always renders a fixed 1280x720 (16:9) picture. Keep the
+       canvas' layout size at exactly that resolution (so Unity's idea of the
+       screen size keeps matching its framebuffer) and scale the element
+       visually to fit the window. This preserves the 16:9 aspect ratio (no
+       stretching), and the Unity WebGL input code divides by the element's
+       bounding rect, so clicks stay aligned. */
     #canvas {
+      top: 50%;
+      left: 50%;
+      width: 1280px !important;
+      height: 720px !important;
+      transform: translate(-50%, -50%) scale(var(--fit, 1));
+      transform-origin: center center;
       background: #000;
       display: none;
+      image-rendering: auto;
+    }
+
+    /* Invisible hotspot placed exactly over the game's own top-right menu
+       button. The button in the conversation scene is dead in the original
+       build (its pause-menu animation never completes in WebGL), so this
+       hotspot takes the click and returns to the title screen instead. */
+    #menuBtn {
+      position: fixed;
+      z-index: 6;
+      display: none;
+      cursor: pointer;
+      border-radius: 6px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #menuBtn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset;
+    }
+
+    #skipUI {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font: 12px/1.2 sans-serif;
+      user-select: none;
+    }
+
+    #skipUI button, #skipUI label {
+      background: rgba(0, 0, 0, 0.55);
+      color: #ddd;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    #skipUI button:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    #skipUI input {
+      vertical-align: -1px;
+      margin: 0 4px 0 0;
     }
 
     .visible {
@@ -155,6 +232,13 @@
     </form>
   </div>
 
+  <div id="skipUI" class="hidden">
+    <label title="Automatically skip every gameplay mission"><input type="checkbox" id="autoSkip">auto-skip</label>
+    <button id="skipBtn" title="Skip the current gameplay mission">skip gameplay</button>
+  </div>
+
+  <div id="menuBtn" title="Return to the main menu"></div>
+
   <script>
     if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
       var meta = document.createElement("meta");
@@ -212,6 +296,117 @@
       el.classList.remove("pending");
       if (done) el.style.color = "#00e676";
       else el.style.color = "#ffeb3b";
+    }
+
+    // Keep the canvas fitted to the window at the game's native 16:9
+    // resolution without changing its layout size (see the #canvas CSS).
+    let unityInstance = null;
+    function fitCanvas() {
+      const canvas = document.querySelector("#canvas");
+      const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+      canvas.style.setProperty("--fit", String(scale));
+
+      // Keep the menu hotspot glued to the game's top-right button.
+      const r = canvas.getBoundingClientRect();
+      const btn = document.getElementById("menuBtn");
+      if (btn && r.width > 0) {
+        btn.style.left = (r.left + r.width * 0.932) + "px";
+        btn.style.top = (r.top + r.height * 0.008) + "px";
+        btn.style.width = (r.width * 0.067) + "px";
+        btn.style.height = (r.height * 0.112) + "px";
+      }
+    }
+    let fitTimer = null;
+    window.addEventListener("resize", () => {
+      clearTimeout(fitTimer);
+      fitTimer = setTimeout(fitCanvas, 100);
+    });
+    window.addEventListener("orientationchange", () => setTimeout(fitCanvas, 200));
+    fitCanvas();
+
+    // ------------------------------------------------------------------
+    // Mission skipping helpers
+    // ------------------------------------------------------------------
+    // The mission ("non visual novel") scenes have two problems inherited from
+    // the original WebGL build:
+    //  * the "Click to start" button on the mission description screen gets its
+    //    listener after an await that never completes in single threaded WebGL,
+    //    so the button does nothing,
+    //  * the goal controller used to have no injected GameDataManager (that part
+    //    is repaired in the build data itself).
+    // These helpers forward clicks to the description screen and allow skipping
+    // a mission entirely (complete it + load the next story scene).
+    function wireSkipControls(instance) {
+      window.__unityInstance = instance;
+      unityInstance = instance;
+      fitCanvas();
+
+      const send = (obj, method) => {
+        try {
+          instance.SendMessage(obj, method);
+        } catch (e) {
+          // target not present in the current scene - ignore
+        }
+      };
+
+      const canvas = document.querySelector("#canvas");
+      canvas.addEventListener("pointerdown", () => send("LevelDescription", "Clicked"));
+
+      let skipping = false;
+      function skipMission() {
+        if (skipping) return;
+        skipping = true;
+        send("LevelDescription", "Clicked");
+        setTimeout(() => send("GoalController", "OnLevelComplete"), 400);
+        setTimeout(() => send("GoalController", "NextLevel"), 1400);
+        setTimeout(() => { skipping = false; }, 4000);
+      }
+
+      document.getElementById("skipBtn").addEventListener("click", (e) => {
+        e.preventDefault();
+        skipMission();
+      });
+
+      let autoTimer = null;
+      function updateAutoSkip() {
+        if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+        if (document.getElementById("autoSkip").checked) {
+          skipMission();
+          autoTimer = setInterval(skipMission, 5000);
+        }
+      }
+      document.getElementById("autoSkip").addEventListener("change", updateAutoSkip);
+
+      // Hide the harmless "SendMessage: object ... not found!" errors that are
+      // produced when a helper fires while its target is not in the scene.
+      const isMissingTarget = (s) =>
+        typeof s === "string" && s.indexOf("SendMessage: object ") === 0 &&
+        s.slice(-11) === "not found!";
+      const origError = console.error.bind(console);
+      const origWarn = console.warn.bind(console);
+      console.error = (...args) => { if (!isMissingTarget(args[0])) origError(...args); };
+      console.warn = (...args) => { if (!isMissingTarget(args[0])) origWarn(...args); };
+
+      document.getElementById("skipUI").className = "visible";
+
+      // Make the dead in-game top-right menu button work: send the player
+      // back to the title screen (the conversation scene manager exposes
+      // LoadMainMenu and it works fine in WebGL).
+      const menuBtn = document.getElementById("menuBtn");
+      menuBtn.style.display = "block";
+      menuBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        send("ConversationSceneManager", "LoadMainMenu");
+      });
+      fitCanvas();
+      // The canvas may still be settling right after boot; keep the hotspot
+      // aligned for a moment.
+      let placeTimer = 0;
+      const placeTick = setInterval(() => {
+        fitCanvas();
+        if (++placeTimer > 20) clearInterval(placeTick);
+      }, 250);
     }
 
     const dataParts = 7;
@@ -275,10 +470,14 @@
               companyName: "Banzai Project",
               productName: "SexWithHitler",
               productVersion: "1.9",
+              // Unity's Module merges this object; pinning the DPR here makes the
+              // engine compute Screen = 1280x720 on Retina displays as well.
+              devicePixelRatio: 1,
             }, (progress) => {
               setStatus("status-engine", `booting... ${Math.round(progress * 100)}%`);
-            }).then(() => {
+            }).then((instance) => {
               setStatus("status-engine", "done ✓", true);
+              wireSkipControls(instance);
             });
           }, 500);
         };
